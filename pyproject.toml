@@ -1,0 +1,8 @@
+[project]
+name = "meal-planning-assistant"
+version = "0.1.0"
+description = "AI Assistant for Meal Planning and Nutrition!"
+readme = "README.md"
+dependencies = [
+    "streamlit>=1.53.1",
+]
