@@ -4,5 +4,6 @@ version = "0.1.0"
 description = "AI Assistant for Meal Planning and Nutrition!"
 readme = "README.md"
 dependencies = [
+    "python-dotenv>=1.2.1",
     "streamlit>=1.53.1",
 ]
