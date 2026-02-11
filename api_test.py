@@ -5,9 +5,11 @@
 import spoonacular
 from spoonacular.rest import ApiException
 from spoonacular.models.analyze_recipe_request import AnalyzeRecipeRequest
+from spoonacular.models.recipe_information import RecipeInformation
 from pprint import pprint
 from dotenv import load_dotenv
 import os
+from bs4 import BeautifulSoup
 
 load_dotenv()
 
@@ -42,10 +44,35 @@ with spoonacular.ApiClient(configuration) as api_client:
     maxFat = 25
     number = 2
 
+    include_nutrition = False
+    include_tags = 'vegetarian'
+    excluded_tags = 'meat,dairy'
+    number = 1
+
     try:
         # Analyze Recipe
-        api_response = api_instance.search_recipes(query, max_fat=maxFat, number=number)
+        # api_response = api_instance.search_recipes(query, max_fat=maxFat, number=number, add_recipe_information=True)
+        api_response = api_instance.get_random_recipes(include_nutrition=include_nutrition, include_tags=include_tags, exclude_tags=excluded_tags, number=number)
         print("The response of RecipesAPI->search_recipes:\n")
-        pprint(api_response)
+
+        pprint(api_response.recipes)
+        # ids = [result.to_dict()['id'] for result in res]
+
+        # ids_str = ",".join(str(i) for i in ids)
+
+        # # get more info about this recipe (in practice, we would call the get recipe info bulk endpoint)
+        # recipe_api_response = api_instance.get_recipe_information_bulk(ids_str, include_nutrition=False)
+        
+        # pprint(recipe_api_response)
+
+        # clean summary
+        # summary1 = recipe_api_response[0].to_dict()['summary']
+
+        # print(summary1)
+        # cleaned = BeautifulSoup(summary1, 'html.parser').get_text(" ", strip=True)
+
+        # print(cleaned)
+
+
     except ApiException as e:
         print("Exception when calling : RecipesAPI->search_recipes%s\n" % e)

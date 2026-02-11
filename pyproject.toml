@@ -4,6 +4,16 @@ version = "0.1.0"
 description = "AI Assistant for Meal Planning and Nutrition!"
 readme = "README.md"
 dependencies = [
+    "bs4>=0.0.2",
+    "chromadb>=1.5.0",
+    "langchain>=1.2.9",
+    "langchain-anthropic>=1.3.2",
+    "langchain-chroma>=1.1.0",
+    "langchain-openai>=1.1.8",
     "python-dotenv>=1.2.1",
+    "spoonacular",
     "streamlit>=1.53.1",
 ]
+
+[tool.uv.sources]
+spoonacular = { git = "https://github.com/ddsky/spoonacular-api-clients.git", subdirectory = "python" }
