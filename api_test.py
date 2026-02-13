@@ -40,14 +40,14 @@ with spoonacular.ApiClient(configuration) as api_client:
     api_instance = spoonacular.RecipesApi(api_client)
     # example based off docs
     # params
-    query = "pasta"
+    query = "soup"
     maxFat = 25
     number = 2
 
     include_nutrition = False
     include_tags = 'vegetarian'
     excluded_tags = 'meat,dairy'
-    number = 1
+    number = 2
 
     try:
         # Analyze Recipe

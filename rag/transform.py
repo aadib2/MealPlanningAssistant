@@ -1,4 +1,3 @@
-from rag.ingestion import get_recipes_info
 from langchain_core.documents import Document
 from typing import List
 
@@ -16,11 +15,13 @@ def build_documents(recipes) -> List[Document]:
 
         text = f"""
 
-        {recipe_dict['title']}
+        {recipe_dict.get('title', '')}
 
-        Summary: {clean_summary(recipe_dict)}
+        Summary: {clean_summary(recipe_dict.get('summary', ''))}
             
         Ingredients: {format_ingredients(recipe_dict.get('extendedIngredients', []))}
+
+        Instructions Summary: {clean_summary(recipe_dict.get('instructions', ''))}
         
         Cuisines: {', '.join(recipe_dict.get('cuisines', []))}
         Diets: {', '.join(recipe_dict.get('diets', []))}
@@ -44,8 +45,8 @@ def build_documents(recipes) -> List[Document]:
             'diets': recipe_dict.get('diets', []),
             'dishTypes': recipe_dict.get('dishTypes', []),
             'sourceUrl': recipe_dict.get('sourceUrl', ''),
-            'healthScore': recipe_dict['healthScore'],
-            'spoonacularScore': recipe_dict['spoonacularScore'],
+            'healthScore': recipe_dict.get('healthScore', 0),
+            'spoonacularScore': recipe_dict.get('spoonacularScore', 0),
             'image': recipe_dict.get('image', ''),
             # Store full recipe JSON if needed
             # 'source_data': json.dumps(recipe)
@@ -67,10 +68,9 @@ def format_ingredients(ingredients):
 def instructions_summary(recipe):
     """Extract cooking method summary rather than full instructions"""
     instructions_summ =  f"Cooking method: {recipe.get('cookingMinutes', '')} min cooking. " \
-                         f"{recipe.get('preparationMinutes')} min prep."
+                         f"{recipe.get('preparationMinutes', '')} min prep."
 
     return instructions_summ
 
-def clean_summary(recipe):
-    summary = recipe.get("summary", "")
+def clean_summary(summary):
     return BeautifulSoup(summary, "html.parser").get_text(" ", strip=True)
