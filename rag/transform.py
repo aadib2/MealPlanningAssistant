@@ -67,8 +67,22 @@ def format_ingredients(ingredients):
 
 def instructions_summary(recipe):
     """Extract cooking method summary rather than full instructions"""
-    instructions_summ =  f"Cooking method: {recipe.get('cookingMinutes', '')} min cooking. " \
-                         f"{recipe.get('preparationMinutes', '')} min prep."
+
+    keys = ['cookingMinutes', 'preparationMinutes', 'readyInMinutes']
+
+    minute_types = {}
+    for key in keys:
+        minutes = recipe.get(key)
+
+        if minutes in (0, None, -1):  # likely unknown; avoid misleading the model
+            minute_types[key] = 'Null'
+        else:
+            minute_types[key] = minutes
+
+
+    instructions_summ =  f"Cooking method: {minute_types['cookingMinutes']} min cooking. " \
+                         f"{minute_types['preparationMinutes']} min prep. " \
+                         f"{minute_types['readyInMinutes']} min total time. "
 
     return instructions_summ
 

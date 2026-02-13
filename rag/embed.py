@@ -1,4 +1,5 @@
-# Vector DB using Chroma
+# Vector DB using Chroma - build & persist
+
 from langchain_chroma import Chroma
 
 def build_load_vectorstore(documents, embeddings, persist_dir):

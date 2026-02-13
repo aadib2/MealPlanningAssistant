@@ -10,6 +10,7 @@ from pprint import pprint
 from dotenv import load_dotenv
 import os
 from bs4 import BeautifulSoup
+import json
 
 load_dotenv()
 
@@ -52,10 +53,10 @@ with spoonacular.ApiClient(configuration) as api_client:
     try:
         # Analyze Recipe
         # api_response = api_instance.search_recipes(query, max_fat=maxFat, number=number, add_recipe_information=True)
-        api_response = api_instance.get_random_recipes(include_nutrition=include_nutrition, include_tags=include_tags, exclude_tags=excluded_tags, number=number)
-        print("The response of RecipesAPI->search_recipes:\n")
+        # api_response = api_instance.get_random_recipes(include_nutrition=include_nutrition, include_tags=include_tags, exclude_tags=excluded_tags, number=number)
+        # print("The response of RecipesAPI->search_recipes:\n")
 
-        pprint(api_response.recipes)
+        # pprint(api_response.recipes)
         # ids = [result.to_dict()['id'] for result in res]
 
         # ids_str = ",".join(str(i) for i in ids)
@@ -72,6 +73,25 @@ with spoonacular.ApiClient(configuration) as api_client:
         # cleaned = BeautifulSoup(summary1, 'html.parser').get_text(" ", strip=True)
 
         # print(cleaned)
+
+        # Read raw JSON to avoid strict response validation errors
+        _param = api_instance._get_random_recipes_serialize(
+            include_nutrition=include_nutrition,
+            include_tags=include_tags,
+            exclude_tags=excluded_tags,
+            number=3,
+            _request_auth=None,
+            _content_type=None,
+            _headers=None,
+            _host_index=0
+        )
+        response_data = api_instance.api_client.call_api(*_param)
+        response_data.read()
+        recipe_batch = json.loads(response_data.data.decode("utf-8"))
+
+        recipes = recipe_batch.get('recipes')
+
+        print(len(recipes))
 
 
     except ApiException as e:

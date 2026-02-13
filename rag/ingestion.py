@@ -31,10 +31,9 @@ configuration.api_key['apiKeyScheme'] = api_key
 
 def get_recipes_info():
     # can be modified later
-    output = {}
-    cuisines = ['Italian', 'Mexican', 'Asian'] # 'American', 'Indian', 'Mediterranean']
-    meal_types = ['breakfast'] # 'lunch', 'dinner'] #, 'snack']
-    batch_size = 1 # can be modified
+    cuisines = ['Italian', 'Mexican', 'Asian', 'American', 'Indian', 'Mediterranean']
+    meal_types = ['breakfast', 'lunch', 'dinner'] #, 'snack']
+    batch_size = 35 # can be modified
 
     # we can get 35 recipes each time for each category (cuisine, meal_type) --> 18 * 35 = 630
     all_recipes = []
@@ -44,13 +43,23 @@ def get_recipes_info():
                 api_instance = spoonacular.RecipesApi(api_client)
                 
                 try:
-                    recipe_batch = api_instance.get_random_recipes(
+                    # Read raw JSON to avoid strict response validation errors
+                    _param = api_instance._get_random_recipes_serialize(
                         include_nutrition=False,
-                        include_tags=f'{cuisine},{meal_type}',
-                        number=batch_size
-                    ) # returns a GetRandomRecipes200Response
+                        include_tags=f"{cuisine},{meal_type}",
+                        exclude_tags=None,
+                        number=batch_size,
+                        _request_auth=None,
+                        _content_type=None,
+                        _headers=None,
+                        _host_index=0
+                    )
+                    response_data = api_instance.api_client.call_api(*_param)
+                    response_data.read()
+                    recipe_batch = json.loads(response_data.data.decode("utf-8"))
 
-                    all_recipes.extend([r.to_dict() for r in recipe_batch.recipes])
+                    all_recipes.extend(recipe_batch.get("recipes", [])) # add to list of json objects
+
                 except ApiException as e:
                     print("Exception when calling : RecipesAPI/get_random_recipes %s\n" % e)
     
@@ -83,5 +92,5 @@ def ingest_recipes():
 if __name__ == "__main__": # for testing
     ingested_recipes = ingest_recipes()
 
-    print(len(ingested_recipes['recipes'])) # should return 3 total
+    print(len(ingested_recipes['recipes'])) # should return 630 total
     # pprint(ingested_recipes['recipes']) 
