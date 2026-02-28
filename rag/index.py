@@ -8,10 +8,11 @@ from dotenv import load_dotenv
 
 # # necessary imports
 from langchain_openai import OpenAIEmbeddings
-# from langchain_anthropic import ChatAnthropic
-from langchain_chroma import Chroma
-# from langchain.tools import tool
-# from langchain.agents import create_agent
+from langchain_anthropic import ChatAnthropic
+from langchain_pinecone import PineconeVectorStore
+from pinecone import Pinecone
+from pinecone import ServerlessSpec
+from uuid import uuid4
 
 load_dotenv()
 
@@ -42,21 +43,43 @@ def build_index():
     # build docs
     documents = build_documents(valid_recipes)
 
-    # for doc in documents: # for testing
-    #     print(f'{doc.page_content}\n')
-    #     print(doc.metadata)
+    for doc in documents[:10]: # for testing
+        print(f'{doc.page_content}\n')
+        print(doc.metadata)
 
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-    vector_store = Chroma(
-        collection_name="recipe_collection",
-        embedding_function=embeddings,
-        persist_directory=PERSIST_DIR,
+    print(len(documents))
+
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-small") # dim = 1536
+
+    # pinecone setup
+    pinecone_api_key = os.getenv('PINECONE_API_KEY')
+    pc = Pinecone(api_key=pinecone_api_key)
+    index_name = "spoonacular-recipes"
+
+    if not pc.has_index(index_name):
+        pc.create_index(
+            name=index_name,
+            dimension=1536,
+            metric="cosine",
+            spec=ServerlessSpec(cloud='aws', region='us-east-1')
+        )
+    
+    index = pc.Index(index_name)
+    
+    # init vector store
+    vector_store = PineconeVectorStore(
+        index=index,
+        embeddings=embeddings,
     )
-    vector_store.add_documents(documents=documents)
-    print("Index built.")
+
+    uuids = [str(uuid4()) for _ in range(len(documents))] # create ids for each doc
+    vector_store.add_documents(documents=documents, ids=uuids)
+
 
 if __name__ == "__main__":
     build_index()
+
+    # a test - similarity search
 
 # # rag tool
 # @tool(response_format="content_and_artifact")

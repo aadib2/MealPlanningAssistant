@@ -1,4 +1,11 @@
-from pipeline import agent
+from agents.meal_planner import create_agent
+from agents.tools import build_retriever_tool
+
+
+# access vector store and create tool
+
+agent = create_agent()
+
 
 query = (
     'Quick healthy, dinner under 30 minutes'

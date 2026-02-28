@@ -40,6 +40,10 @@ def validate_recipe_dict(recipe: Dict[str, Any]) -> List[str]:
     for key in REQUIRED_KEYS:
         if key not in recipe or recipe.get(key) in (None, ""):
             errors.append(f"Missing required key: {key}")
+    
+    # ensuring title isn't empty (edge case)
+    if not isinstance(recipe.get("title", ""), str) or recipe.get("title", "").strip() == "":
+        errors.append("title must be a non-empty string")
 
     for key in LIST_KEYS:
         value = recipe.get(key, [])

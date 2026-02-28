@@ -32,8 +32,8 @@ configuration.api_key['apiKeyScheme'] = api_key
 def get_recipes_info():
     # can be modified later
     cuisines = ['Italian', 'Mexican', 'Asian', 'American', 'Indian', 'Mediterranean']
-    meal_types = ['breakfast', 'lunch', 'dinner'] #, 'snack']
-    batch_size = 35 # can be modified
+    meal_types = ['breakfast', 'lunch', 'dinner']
+    batch_size = 35
 
     # we can get 35 recipes each time for each category (cuisine, meal_type) --> 18 * 35 = 630
     all_recipes = []
@@ -72,10 +72,10 @@ RAW_DATA_PATH = os.path.join(BASE_DIR, "data", "raw_recipes.json")
 
 def ingest_recipes():
     #load from disk if already fetched
-    # if os.path.exists(RAW_DATA_PATH):
-    #     print("Loading from cache...")
-    #     with open(RAW_DATA_PATH, 'r') as f:
-    #         return json.load(f)
+    if os.path.exists(RAW_DATA_PATH):
+        print("Loading from cache...")
+        with open(RAW_DATA_PATH, 'r') as f:
+            return json.load(f)
     
     # otherwise call API and save
     print("Fetching from API...")   
