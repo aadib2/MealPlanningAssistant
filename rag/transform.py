@@ -29,7 +29,7 @@ def build_documents(recipes) -> List[Document]:
         Cuisines: {_safe_join(recipe_dict.get('cuisines', []))}
         Diets: {_safe_join(recipe_dict.get('diets', []))}
         Dish Types: {_safe_join(recipe_dict.get('dishTypes', []))}
-        Cooking Method: {instructions_summary(recipe_dict)}
+        Cooking Method: {cooking_summary(recipe_dict)}
         Price per serving: ${recipe_dict.get('pricePerServing', 0) / 100:.2f}
 
         """
@@ -44,7 +44,7 @@ def build_documents(recipes) -> List[Document]:
             "servings": float(recipe_dict.get("servings", 0)),
             "pricePerServing": float(recipe_dict.get("pricePerServing", 0)),
             "pricePerServingDollars": round(float(recipe_dict.get("pricePerServing", 0)) / 100, 2),
-            # flatten list metadata for Chroma compatibility
+            # flatten list metadata for VectorDB compatibility
             "cuisines": _safe_join(recipe_dict.get("cuisines", [])),
             "diets": _safe_join(recipe_dict.get("diets", [])),
             "dishTypes": _safe_join(recipe_dict.get("dishTypes", [])),
@@ -68,7 +68,7 @@ def format_ingredients(ingredients):
     return ', '.join([ing.get('name', ing.get('original', '')) # considers name then falls back to original
                      for ing in ingredients])  # get all incredients and save to comma separated string
 
-def instructions_summary(recipe):
+def cooking_summary(recipe):
     """Extract cooking method summary rather than full instructions"""
 
     keys = ['cookingMinutes', 'preparationMinutes', 'readyInMinutes']
@@ -83,11 +83,11 @@ def instructions_summary(recipe):
             minute_types[key] = minutes
 
 
-    instructions_summ =  f"{minute_types['cookingMinutes']} min cooking. " \
+    cooking_summ =  f"{minute_types['cookingMinutes']} min cooking. " \
                          f"{minute_types['preparationMinutes']} min prep. " \
                          f"{minute_types['readyInMinutes']} min total time. "
 
-    return instructions_summ
+    return cooking_summ
 
 def clean_summary(summary):
     return BeautifulSoup(summary, "html.parser").get_text(" ", strip=True)

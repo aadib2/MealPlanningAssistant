@@ -4,25 +4,24 @@ import json
 from normalize import to_recipe_dict
 from validate import validate_batch
 from transform import build_documents
-from dotenv import load_dotenv
 
-# # necessary imports
+# necessary imports
+from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
-from langchain_anthropic import ChatAnthropic
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone
 from pinecone import ServerlessSpec
 from uuid import uuid4
 
-load_dotenv()
+load_dotenv() # loads necessary .env variables (openai & pinecone)
 
-
-# load recipes
+# necessary paths
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-RAW_DATA_PATH = os.path.join(BASE_DIR, "data", "raw_recipes.json")
-PERSIST_DIR = os.path.join(BASE_DIR, "chroma_langchain_db")
+RAW_DATA_PATH = os.path.join(BASE_DIR, "data", "raw_recipes.json") # path for json data
 
-def build_index():
+
+def create_docs():
+    # load recipe json
     with open(RAW_DATA_PATH, 'r') as f:
         payload = json.load(f)
 
@@ -43,12 +42,10 @@ def build_index():
     # build docs
     documents = build_documents(valid_recipes)
 
-    for doc in documents[:10]: # for testing
-        print(f'{doc.page_content}\n')
-        print(doc.metadata)
+    return documents
 
-    print(len(documents))
 
+def build_index(documents):
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small") # dim = 1536
 
     # pinecone setup
@@ -64,12 +61,12 @@ def build_index():
             spec=ServerlessSpec(cloud='aws', region='us-east-1')
         )
     
-    index = pc.Index(index_name)
+    index = pc.Index(index_name) # connect to existing index
     
     # init vector store
     vector_store = PineconeVectorStore(
         index=index,
-        embeddings=embeddings,
+        embedding=embeddings,
     )
 
     uuids = [str(uuid4()) for _ in range(len(documents))] # create ids for each doc
@@ -77,26 +74,6 @@ def build_index():
 
 
 if __name__ == "__main__":
-    build_index()
+    documents = create_docs()
+    build_index(documents)
 
-    # a test - similarity search
-
-# # rag tool
-# @tool(response_format="content_and_artifact")
-# def retrieve_context(query: str):
-#     """Retrieve information to help answer a query."""
-#     retrieved_docs = vector_store.similarity_search(query, k=5) # will retrieve top 5 candidate recipes
-#     serialized = "\n\n".join(
-#         (f"Source: {doc.metadata}\nContent: {doc.page_content}")
-#         for doc in retrieved_docs
-#     )
-#     return serialized, retrieved_docs
-
-# tools = [retrieve_context]
-# # if desired, specify custom instructions
-# prompt = (
-#     "You have acess to a tool that retrieves relevant recipes and meals from a recipe database."
-#     "Use the tool to help answer user queries."
-# )
-
-# agent = create_agent(model, tools, system_prompt=prompt)
