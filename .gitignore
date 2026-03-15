@@ -205,3 +205,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# additional files that I don't want tracked (for debugging / testing)
+api_test.py
+rag/verify.py
+data/test_json.py
