@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from normalize import REQUIRED_KEYS # imported from normalize.py
+try:
+    from rag.normalize import REQUIRED_KEYS  # package import path
+except ImportError:
+    from normalize import REQUIRED_KEYS  # script-local fallback
 
 
 LIST_KEYS = (

@@ -1,13 +1,17 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from fastapi.middleware.cors import CORSMiddleware
-import os
 from typing import Any, Dict, List
 
 from dotenv import load_dotenv
-from rag.query import get_chunks
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
+from .session_chat_handler import SessionChatHandler
+from .ingester import Ingester
+from data.spoonacular_data_options import (
+    cuisine_options,
+    meal_type_options,
+    diet_options,
+    intolerances_options,
+)
 
 
 # ----- Init App ----
@@ -23,23 +27,6 @@ app.add_middleware(
 )
 
 load_dotenv()
-
-# ---- Model Initialization ----
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-if not ANTHROPIC_API_KEY:
-    raise ValueError("ANTHROPIC_API_KEY not found in environment variables.")
-
-model = ChatAnthropic(
-    model="claude-haiku-4-5-20251001",
-    temperature=0.3,
-    api_key=ANTHROPIC_API_KEY,
-)
-
-SYSTEM_PROMPT = (
-    "You are a helpful meal planning assistant. "
-    "Use provided context when relevant. "
-    "If context is insufficient, say what is missing."
-)
 
 # ----- Pydantic Schemas -----
 class ChatRequest(BaseModel):
@@ -57,12 +44,55 @@ class UserPreferences(BaseModel):
     user_id: int
     total_time: int = Field(ge=1, le=600)
     diet_types: List[str] = Field(default_factory=list)
+    calories_min: int = Field(ge=0)
+    calories_max: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_calorie_range(self) -> "UserPreferences":
+        if self.calories_min > self.calories_max:
+            raise ValueError("calories_min must be less than or equal to calories_max")
+        return self
+
+class IngestFilters(BaseModel):
+    session_id: str
+    cuisines: List[str] = Field(default_factory=list)
+    meal_types: List[str] = Field(default_factory=list)
+    diet_types: List[str] = Field(default_factory=list)
+    intolerances: List[str] = Field(default_factory=list)
+    recipe_count: int = Field(ge=1, le=100)
+
+    @model_validator(mode="after")
+    def validate_allowed_values(self) -> "IngestFilters":
+        valid_sets = {
+            "cuisines": set(cuisine_options),
+            "meal_types": set(meal_type_options),
+            "diet_types": set(diet_options),
+            "intolerances": set(intolerances_options),
+        }
+
+        for field_name, valid_values in valid_sets.items():
+            values = getattr(self, field_name)
+            invalid = [item for item in values if item not in valid_values]
+            if invalid:
+                raise ValueError(f"Invalid {field_name}: {invalid}")
+
+        return self
+
+
+class IngestResponse(BaseModel):
+    message: str
+    fetched_count: int
+    ingested_count: int
+    invalid_count: int
+    invalid_samples: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 # define session memory & preferences store
-MAX_TURNS = 6
-session_memory: Dict[str, List[Any]] = {}
-preferences_store: Dict[str, UserPreferences] = {}
+# MAX_TURNS = 6
+# session_memory: Dict[str, List[Any]] = {} --> using Redis instead
+preferences_store: Dict[str, UserPreferences] = {} # keeping this until find more persistent way to track
+chat_handler = SessionChatHandler()
+ingester = Ingester()
 
 
 # ----- Define routes ----
@@ -71,10 +101,6 @@ async def root() -> dict:
     return {"message": "Hello from FastAPI!!"}
 
 
-def query_vectordb(user_message: str) -> List[Dict[str, Any]]:
-    """Fetch relevant chunks from Pinecone using MMR retrieval."""
-    return get_chunks(user_query=user_message, k=5, fetch_k=20, lambda_mult=0.5)
-
 
 @app.post("/chat", tags=["Chat"])
 async def chat(chat_input: ChatRequest) -> ChatResponse:
@@ -82,66 +108,34 @@ async def chat(chat_input: ChatRequest) -> ChatResponse:
     try:
         session_id = chat_input.session_id
         user_message = chat_input.user_message
-
-        # get session history
-        history = session_memory.get(session_id, [])
-
-        # 1) Retrieve context chunks
-        relevant_chunks = query_vectordb(user_message)
-
-        if relevant_chunks:
-            context_text = "\n\n".join(chunk["content"] for chunk in relevant_chunks)
-
-            # 2) Build prompt with session history
-
-            user_with_context = (
-                f"User question:\n{user_message}\n\n"
-                f"Retrieved context:\n{context_text}\n\n"
-                "Answer using the context when possible."
-            )
-        else:
-            user_with_context = (
-                "No specific context is available for this query, "
-                "so respond based on your general knowledge."
-            )
-
-        # Add user preferences (if available) into system instructions
         user_prefs = preferences_store.get(session_id)
-        dynamic_system_prompt = SYSTEM_PROMPT
-        if user_prefs:
-            diets = ", ".join(user_prefs.diet_types) if user_prefs.diet_types else "No dietary restrictions"
-            dynamic_system_prompt += (
-                "\n\nUser preferences:\n"
-                f"- Max cooking time: {user_prefs.total_time} minutes\n"
-                f"- Diet types: {diets}\n"
-                "Prefer recommendations that satisfy these preferences."
-            )
+        # chat
+        response = chat_handler.chat(session_id, user_message, user_prefs)
 
-        messages = [
-            SystemMessage(content=dynamic_system_prompt),
-            *history,
-            HumanMessage(content=user_with_context),
-        ]
-
-        # 3) Invoke model
-        ai_msg = model.invoke(messages)
-
-        # 4) Save memory (store raw user msg, not augmented text)
-        updated_history = history + [
-            HumanMessage(content=user_message),
-            AIMessage(content=ai_msg.content),
-        ]
-        session_memory[session_id] = updated_history[-(MAX_TURNS * 2):]
-
-        return ChatResponse(model_response=ai_msg.content, chunks=relevant_chunks)
+        return ChatResponse(model_response=response["response"], chunks=response["chunks"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/ingest", tags=["Ingest"])
-async def ingest_pinecone():
-    # ...existing code...
-    return {"message": "Ingest endpoint not implemented yet."}
+@app.post("/ingest", tags=["Ingest"], response_model=IngestResponse)
+async def ingest_pinecone(filters: IngestFilters):
+    try:
+        result = ingester.create_docs(filters.model_dump())
+        ingested_count = ingester.build_index_namespace(result["documents"])
+
+        return IngestResponse(
+            message="Recipes fetched and ingested successfully.",
+            fetched_count=result["raw_count"],
+            ingested_count=ingested_count,
+            invalid_count=result["invalid_count"],
+            invalid_samples=result["invalid_samples"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")
 
 
 @app.get("/preferences", tags=["User Preferences"], response_model=UserPreferences)

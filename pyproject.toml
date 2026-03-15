@@ -13,6 +13,7 @@ dependencies = [
     "langchain-openai>=1.1.8",
     "langchain-pinecone>=0.2.13",
     "python-dotenv>=1.2.1",
+    "redis>=7.3.0",
     "spoonacular",
     "streamlit>=1.53.1",
 ]

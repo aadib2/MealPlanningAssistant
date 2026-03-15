@@ -37,6 +37,7 @@ def get_chunks(
     k: int = 5,
     fetch_k: int = 20,
     lambda_mult: float = 0.5,
+    metadata_filter: Dict[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
     """Retrieve relevant chunks for a user query using MMR search.
 
@@ -51,6 +52,7 @@ def get_chunks(
         k=k,
         fetch_k=fetch_k,
         lambda_mult=lambda_mult,
+        filter=metadata_filter,
     )
 
     return [
