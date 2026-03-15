@@ -2,6 +2,7 @@ from langchain_core.documents import Document
 from typing import List
 
 from bs4 import BeautifulSoup # for html cleaning
+import re # for parsing
 
 # to ensure doesn't break vectorDB typing
 def _safe_join(values):
@@ -44,6 +45,7 @@ def build_documents(recipes) -> List[Document]:
             "servings": float(recipe_dict.get("servings", 0)),
             "pricePerServing": float(recipe_dict.get("pricePerServing", 0)),
             "pricePerServingDollars": round(float(recipe_dict.get("pricePerServing", 0)) / 100, 2),
+            "caloriesPerServing": extract_calories(recipe_dict.get("summary")),
             # flatten list metadata for VectorDB compatibility
             "cuisines": _safe_join(recipe_dict.get("cuisines", [])),
             "diets": _safe_join(recipe_dict.get("diets", [])),
@@ -91,3 +93,23 @@ def cooking_summary(recipe):
 
 def clean_summary(summary):
     return BeautifulSoup(summary, "html.parser").get_text(" ", strip=True)
+
+def extract_calories(summary: str | None) -> float:
+    """Extract calories per serving from a recipe summary string.
+
+    Searches for patterns like '312 calories', '312.5 kcal', or '1,200 Calories'.
+    Returns -1.0 if the summary is missing or no calorie value is found.
+    """
+    if not summary:
+        return -1.0
+
+    # Strip HTML before matching in case the caller passes a raw summary
+    clean = BeautifulSoup(summary, "html.parser").get_text(" ", strip=True)
+
+    # Match integers or decimals, with optional thousands comma, before 'calorie/calories/kcal'
+    match = re.search(r'([\d,]+(?:\.\d+)?)\s*(?:calories?|kcal)\b', clean, re.IGNORECASE)
+    if not match:
+        return -1.0
+
+    raw = match.group(1).replace(",", "")  # remove thousands separator before casting
+    return float(raw)
