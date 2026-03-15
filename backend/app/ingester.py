@@ -111,8 +111,8 @@ class Ingester:
             "invalid_samples": invalid_recipes[:5],
         }
 
-    def build_index_namespace(self, documents: List[Any]) -> int:
-        """Upsert documents into the shared Pinecone index."""
+    def build_index_namespace(self, documents: List[Any], namespace: str | None = None) -> int:
+        """Upsert documents into Pinecone, optionally to a specific namespace."""
         if not documents:
             return 0
 
@@ -127,7 +127,7 @@ class Ingester:
         index = self.pinecone.Index(self.index_name)
         vector_store = PineconeVectorStore(index=index, embedding=self.embeddings)
         ids = [str(uuid4()) for _ in range(len(documents))]
-        vector_store.add_documents(documents=documents, ids=ids)
+        vector_store.add_documents(documents=documents, ids=ids, namespace=namespace)
         return len(documents)
 
 

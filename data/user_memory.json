@@ -1,0 +1,39 @@
+{
+  "users": {
+    "1": {
+      "user_id": 1,
+      "created_at": "2026-03-15T20:17:02.126976+00:00"
+    }
+  },
+  "preferences_by_user": {
+    "1": {
+      "dietary_restrictions": [
+        "Vegetarian"
+      ],
+      "disliked_ingredients": [],
+      "saved_recipes": [],
+      "preference_summary": "Whilst I am vegetarian, I do not like avocado so avoid this in recipes.",
+      "diet_types": []
+    }
+  },
+  "sessions_by_user": {
+    "1": [
+      {
+        "session_id": "9e120cb2-acf7-480f-a4c8-bc7a2d92f52b",
+        "created_at": "2026-03-15T20:38:08.881448+00:00",
+        "last_active_at": "2026-03-15T20:38:53.695443+00:00",
+        "summary": ""
+      },
+      {
+        "session_id": "8b6d5b77-746c-4b0f-9bba-8b387699f3e3",
+        "created_at": "2026-03-15T20:54:25.257155+00:00",
+        "last_active_at": "2026-03-15T21:00:33.543524+00:00",
+        "summary": ""
+      }
+    ]
+  },
+  "session_to_user": {
+    "9e120cb2-acf7-480f-a4c8-bc7a2d92f52b": 1,
+    "8b6d5b77-746c-4b0f-9bba-8b387699f3e3": 1
+  }
+}

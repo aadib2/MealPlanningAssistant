@@ -38,6 +38,7 @@ def get_chunks(
     fetch_k: int = 20,
     lambda_mult: float = 0.5,
     metadata_filter: Dict[str, Any] | None = None,
+    namespace: str | None = None,
 ) -> List[Dict[str, Any]]:
     """Retrieve relevant chunks for a user query using MMR search.
 
@@ -53,12 +54,18 @@ def get_chunks(
         fetch_k=fetch_k,
         lambda_mult=lambda_mult,
         filter=metadata_filter,
+        namespace=namespace,
     )
 
-    return [
-        {
-            "content": doc.page_content,
-            "metadata": doc.metadata,
-        }
-        for doc in docs
-    ]
+    results: List[Dict[str, Any]] = []
+    for doc in docs:
+        metadata = dict(doc.metadata or {})
+        metadata["source_namespace"] = namespace if namespace else "default"
+        results.append(
+            {
+                "content": doc.page_content,
+                "metadata": metadata,
+            }
+        )
+
+    return results

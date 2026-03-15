@@ -33,31 +33,86 @@ class SessionChatHandler:
         If context is insufficient, say what is missing.
         """
 
+    def _dedupe_chunks(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Deduplicate retrieved chunks by recipe id (fallback to title/content)."""
+        seen: set[str] = set()
+        deduped: List[Dict[str, Any]] = []
+
+        for chunk in chunks:
+            metadata = chunk.get("metadata", {}) or {}
+            recipe_id = metadata.get("id")
+            title = metadata.get("title", "")
+            content = chunk.get("content", "")
+            key = str(recipe_id) if recipe_id is not None else f"{title}::{content[:120]}"
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+            deduped.append(chunk)
+
+        return deduped
+
     def _query_vectordb(
         self,
         user_message: str,
-        user_prefs: Optional[Any] = None,
+        chat_context: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """Fetch relevant chunks from Pinecone using MMR retrieval."""
+        """Fetch and merge chunks from core + user namespaces."""
         metadata_filter: Dict[str, Any] | None = None
 
-        if user_prefs:
+        if chat_context:
+            calories_min = chat_context.get("calories_min")
+            calories_max = chat_context.get("calories_max")
+        else:
+            calories_min = None
+            calories_max = None
+
+        if calories_min is not None and calories_max is not None:
             metadata_filter = {
                 "caloriesPerServing": {
-                    "$gte": float(user_prefs.calories_min),
-                    "$lte": float(user_prefs.calories_max),
+                    "$gte": float(calories_min),
+                    "$lte": float(calories_max),
                 }
             }
 
-        return get_chunks(
-            user_query=user_message,
-            k=5,
-            fetch_k=20,
-            lambda_mult=0.5,
-            metadata_filter=metadata_filter,
+        core_namespace = os.getenv("PINECONE_CORE_NAMESPACE") or None
+        user_namespace: str | None = None
+        if chat_context and chat_context.get("user_id") is not None:
+            user_namespace = f"user-{int(chat_context['user_id'])}"
+
+        merged: List[Dict[str, Any]] = []
+        merged.extend(
+            get_chunks(
+                user_query=user_message,
+                k=5,
+                fetch_k=20,
+                lambda_mult=0.5,
+                metadata_filter=metadata_filter,
+                namespace=core_namespace,
+            )
         )
 
-    def chat(self, session_id: str, user_message: str, user_prefs: Optional[Any] = None) -> Dict[str, Any]:
+        if user_namespace:
+            merged.extend(
+                get_chunks(
+                    user_query=user_message,
+                    k=5,
+                    fetch_k=20,
+                    lambda_mult=0.5,
+                    metadata_filter=metadata_filter,
+                    namespace=user_namespace,
+                )
+            )
+
+        return self._dedupe_chunks(merged)[:5]
+
+    def chat(
+        self,
+        session_id: str,
+        user_message: str,
+        chat_context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         Process a chat message within a session context.
         Loads history, generates response, and saves updated history.
@@ -66,7 +121,7 @@ class SessionChatHandler:
         messages = self.session_manager.load_messages(session_id)
 
         # 1) Retrieve context chunks
-        relevant_chunks = self._query_vectordb(user_message, user_prefs=user_prefs)
+        relevant_chunks = self._query_vectordb(user_message, chat_context=chat_context)
 
         if relevant_chunks:
             context_text = "\n\n".join(chunk["content"] for chunk in relevant_chunks)
@@ -84,15 +139,21 @@ class SessionChatHandler:
                 "so respond based on your general knowledge."
             )
 
-        # Add user preferences (if available) into system instructions
+        # Add effective preferences (session + persistent user profile) into system instructions
         dynamic_system_prompt = self.system_message
-        if user_prefs:
-            diets = ", ".join(user_prefs.diet_types) if user_prefs.diet_types else "No dietary restrictions"
+        if chat_context:
+            diets = ", ".join(chat_context.get("diet_types", [])) or "No diet type filters"
+            restrictions = ", ".join(chat_context.get("dietary_restrictions", [])) or "None"
+            dislikes = ", ".join(chat_context.get("disliked_ingredients", [])) or "None"
+            summary = chat_context.get("preference_summary", "")
             dynamic_system_prompt += (
-                "\n\nUser preferences:\n"
-                f"- Max cooking time: {user_prefs.total_time} minutes\n"
+                "\n\nUser context:\n"
+                f"- Max cooking time: {chat_context.get('total_time', 60)} minutes\n"
                 f"- Diet types: {diets}\n"
-                f"- Min and Max Calories Per Serving: {user_prefs.calories_min}, {user_prefs.calories_max}\n"
+                f"- Min and Max Calories Per Serving: {chat_context.get('calories_min', 0)}, {chat_context.get('calories_max', 2000)}\n"
+                f"- Dietary restrictions: {restrictions}\n"
+                f"- Disliked ingredients: {dislikes}\n"
+                f"- Preference summary: {summary if summary else 'Not set'}\n"
                 "Prefer recommendations that satisfy these preferences."
             )
 
