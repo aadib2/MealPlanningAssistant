@@ -8,54 +8,64 @@ from dotenv import load_dotenv
 from rag.query import get_chunks
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
-from langchain_core.prompts import ChatPromptTemplate
 
 
 # ----- Init App ----
 app = FastAPI()
 
+# Allow Streamlit frontend calls
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 load_dotenv()
 
 # ---- Model Initialization ----
-
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 if not ANTHROPIC_API_KEY:
     raise ValueError("ANTHROPIC_API_KEY not found in environment variables.")
 
 model = ChatAnthropic(
     model="claude-haiku-4-5-20251001",
-    temperature=0.3,  # lower for grounded/RAG responses
+    temperature=0.3,
     api_key=ANTHROPIC_API_KEY,
 )
 
-# define system prompt - MODIFY later to be constructed based on user preferences
 SYSTEM_PROMPT = (
     "You are a helpful meal planning assistant. "
     "Use provided context when relevant. "
     "If context is insufficient, say what is missing."
 )
 
-# define session memory
-MAX_TURNS = 6  # keep last 6 turns (12 messages)
-session_memory: Dict[str, List[Any]] = {}  # session_id -> [HumanMessage, AIMessage, ...]
-
 # ----- Pydantic Schemas -----
 class ChatRequest(BaseModel):
     user_message: str
     session_id: str
 
+
 class ChatResponse(BaseModel):
     model_response: str
     chunks: List[Dict[str, Any]] = Field(default_factory=list)
 
-class UserPreferences: # for metdata filtering
+
+class UserPreferences(BaseModel):
+    session_id: str
     user_id: int
-    prep_time: int
-    calories: int
-    diet_type: str
+    total_time: int = Field(ge=1, le=600)
+    diet_types: List[str] = Field(default_factory=list)
+
+
+# define session memory & preferences store
+MAX_TURNS = 6
+session_memory: Dict[str, List[Any]] = {}
+preferences_store: Dict[str, UserPreferences] = {}
+
 
 # ----- Define routes ----
-
 @app.get("/", tags=["root"])
 async def root() -> dict:
     return {"message": "Hello from FastAPI!!"}
@@ -65,7 +75,8 @@ def query_vectordb(user_message: str) -> List[Dict[str, Any]]:
     """Fetch relevant chunks from Pinecone using MMR retrieval."""
     return get_chunks(user_query=user_message, k=5, fetch_k=20, lambda_mult=0.5)
 
-@app.post("/chat", tags=['Chat'])
+
+@app.post("/chat", tags=["Chat"])
 async def chat(chat_input: ChatRequest) -> ChatResponse:
     # goal is to receive message + session id and return streamed response
     try:
@@ -90,13 +101,24 @@ async def chat(chat_input: ChatRequest) -> ChatResponse:
             )
         else:
             user_with_context = (
-                """No specific context is available for this query, 
-                so respond based on your general knowledge."""
+                "No specific context is available for this query, "
+                "so respond based on your general knowledge."
             )
-            
+
+        # Add user preferences (if available) into system instructions
+        user_prefs = preferences_store.get(session_id)
+        dynamic_system_prompt = SYSTEM_PROMPT
+        if user_prefs:
+            diets = ", ".join(user_prefs.diet_types) if user_prefs.diet_types else "No dietary restrictions"
+            dynamic_system_prompt += (
+                "\n\nUser preferences:\n"
+                f"- Max cooking time: {user_prefs.total_time} minutes\n"
+                f"- Diet types: {diets}\n"
+                "Prefer recommendations that satisfy these preferences."
+            )
 
         messages = [
-            SystemMessage(content=SYSTEM_PROMPT),
+            SystemMessage(content=dynamic_system_prompt),
             *history,
             HumanMessage(content=user_with_context),
         ]
@@ -109,19 +131,33 @@ async def chat(chat_input: ChatRequest) -> ChatResponse:
             HumanMessage(content=user_message),
             AIMessage(content=ai_msg.content),
         ]
+        session_memory[session_id] = updated_history[-(MAX_TURNS * 2):]
 
-        session_memory[session_id] = updated_history[-(MAX_TURNS * 2):] # set equal to last 12 messages
-
-        return ChatResponse(
-            model_response=ai_msg.content,
-            chunks=relevant_chunks,
-        )
+        return ChatResponse(model_response=ai_msg.content, chunks=relevant_chunks)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/ingest", tags=['Ingest'])
+
+@app.post("/ingest", tags=["Ingest"])
 async def ingest_pinecone():
-    # logic for triggering pinecone ingestion
-    return
+    # ...existing code...
+    return {"message": "Ingest endpoint not implemented yet."}
+
+
+@app.get("/preferences", tags=["User Preferences"], response_model=UserPreferences)
+async def get_preferences(session_id: str):
+    prefs = preferences_store.get(session_id)
+    if not prefs:
+        raise HTTPException(status_code=404, detail="Preferences not found for this session.")
+    return prefs
+
+
+@app.post("/preferences", tags=["User Preferences"], response_model=UserPreferences)
+async def store_preferences(user_prefs: UserPreferences):
+    preferences_store[user_prefs.session_id] = user_prefs
+    return user_prefs
+
+
+
 
 

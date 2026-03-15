@@ -91,8 +91,7 @@ with spoonacular.ApiClient(configuration) as api_client:
 
         recipes = recipe_batch.get('recipes')
 
-        print(len(recipes))
-
+        print(recipes)
 
     except ApiException as e:
         print("Exception when calling : RecipesAPI->search_recipes%s\n" % e)
