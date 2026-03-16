@@ -40,9 +40,9 @@ This system leverages RAG (Retrieval-Augmented Generation) and agentic workflows
 - **Backend**: Python (migrating to FastAPI)
 - **Frontend**: Streamlit (migrating to React/TypeScript)
 
-## System Architecture
+## System Architecture (Current)
 
-*[To be filled in]*
+<img src="rag/ArchitectureRAG.png" alt="RAG" width="600" height="500">
 
 ## References & Resources
 
