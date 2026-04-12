@@ -84,6 +84,7 @@ class IngestFilters(BaseModel):
     intolerances: List[str] = Field(default_factory=list)
     recipe_count: int = Field(ge=1, le=100)
 
+    # ensure that selected filters are valid in Spoonacular
     @model_validator(mode="after")
     def validate_allowed_values(self) -> "IngestFilters":
         valid_sets = {
@@ -177,6 +178,7 @@ async def chat(chat_input: ChatRequest) -> ChatResponse:
 @app.post("/ingest", tags=["Ingest"], response_model=IngestResponse)
 async def ingest_pinecone(filters: IngestFilters):
     try:
+        # ensuring the owner_id for session matches current user_id, if owner_id is None, attach session under user_id
         owner_id = user_memory_store.get_user_for_session(filters.session_id)
         if owner_id is None:
             user_memory_store.attach_session(
@@ -189,6 +191,7 @@ async def ingest_pinecone(filters: IngestFilters):
                 detail="Session does not belong to this user.",
             )
 
+        # updating last_active_at for the session
         user_memory_store.touch_session(filters.session_id)
 
         result = ingester.create_docs(filters.model_dump())
