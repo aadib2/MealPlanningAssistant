@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "AI Assistant for Meal Planning and Nutrition!"
 readme = "README.md"
 dependencies = [
+    "alembic>=1.17.0",
     "bs4>=0.0.2",
     "chromadb>=1.5.0",
     "fastapi>=0.134.0",
@@ -14,6 +15,7 @@ dependencies = [
     "langchain-pinecone>=0.2.13",
     "python-dotenv>=1.2.1",
     "redis>=7.3.0",
+    "sqlalchemy>=2.0.44",
     "spoonacular",
     "streamlit>=1.53.1",
 ]

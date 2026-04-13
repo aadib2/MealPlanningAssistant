@@ -4,7 +4,13 @@ from urllib import error, request
 import streamlit as st
 
 # get spoonacular metadata
-from data.spoonacular_data_options import diet_options, cuisine_options, meal_type_options, intolerances_options
+from data.spoonacular_data_options import (
+    diet_options,
+    cuisine_options,
+    meal_type_options,
+    intolerances_options,
+)
+
 
 def post_chat(user_id: int, user_message: str, session_id: str, base_url: str) -> dict:
     payload = {
@@ -65,6 +71,40 @@ def get_session_preferences(session_id: str, base_url: str) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def get_sessions(user_id: int, base_url: str) -> list:
+    req = request.Request(
+        url=f"{base_url.rstrip('/')}/sessions?user_id={int(user_id)}",
+        method="GET",
+    )
+    with request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def create_session(user_id: int, base_url: str) -> dict:
+    payload = {"user_id": int(user_id)}
+    body = json.dumps(payload).encode("utf-8")
+    req = request.Request(
+        url=f"{base_url.rstrip('/')}/sessions",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def get_session_messages(session_id: str, user_id: int, base_url: str) -> list:
+    req = request.Request(
+        url=(
+            f"{base_url.rstrip('/')}/sessions/{session_id}/messages"
+            f"?user_id={int(user_id)}"
+        ),
+        method="GET",
+    )
+    with request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 def post_ingest(payload: dict, base_url: str) -> dict:
     body = json.dumps(payload).encode("utf-8")
     req = request.Request(
@@ -82,7 +122,13 @@ st.set_page_config(layout="wide")
 st.title("🥐 Meal Planning Assistant 🥪")
 
 if "chat_session_id" not in st.session_state:
-    st.session_state.chat_session_id = str(uuid4())
+    st.session_state.chat_session_id = ""
+
+if "available_sessions" not in st.session_state:
+    st.session_state.available_sessions = []
+
+if "selected_session_label" not in st.session_state:
+    st.session_state.selected_session_label = ""
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -108,17 +154,101 @@ with st.sidebar:
     st.subheader("Backend Settings")
     api_base_url = st.text_input("FastAPI URL", value="http://localhost:8000")
     user_id = st.number_input("User ID", min_value=1, step=1, key="user_id_input")
+
+    st.subheader("Chat Sessions")
+
+    if st.button("Refresh Sessions"):
+        try:
+            sessions = get_sessions(user_id=int(user_id), base_url=api_base_url)
+            st.session_state.available_sessions = sessions
+            st.success(f"Loaded {len(sessions)} sessions.")
+        except error.HTTPError as http_err:
+            st.error(f"Backend error {http_err.code}: {http_err.reason}")
+        except error.URLError:
+            st.error(
+                "Could not reach FastAPI backend. Start it with: "
+                "uv run uvicorn backend.app.api:app --reload"
+            )
+
+    if st.button("Start New Session"):
+        try:
+            response = create_session(user_id=int(user_id), base_url=api_base_url)
+            new_session_id = response.get("session_id", "")
+            if new_session_id:
+                st.session_state.chat_session_id = new_session_id
+                st.session_state.chat_history = []
+                sessions = get_sessions(user_id=int(user_id), base_url=api_base_url)
+                st.session_state.available_sessions = sessions
+                st.success("Started a new session.")
+                st.rerun()
+        except error.HTTPError as http_err:
+            st.error(f"Backend error {http_err.code}: {http_err.reason}")
+        except error.URLError:
+            st.error(
+                "Could not reach FastAPI backend. Start it with: "
+                "uv run uvicorn backend.app.api:app --reload"
+            )
+
+    session_options = []
+    for session in st.session_state.available_sessions:
+        sid = session.get("session_id", "")
+        title = session.get("title", "") or "Untitled"
+        last_active = session.get("last_active_at", "")
+        session_options.append(f"{sid} | {title} | {last_active}")
+
+    if session_options:
+        selected_label = st.selectbox(
+            "Previous Sessions",
+            options=session_options,
+            key="selected_session_label",
+        )
+
+        if st.button("Load Selected Session"):
+            selected_session_id = selected_label.split(" | ")[0]
+            try:
+                history = get_session_messages(
+                    session_id=selected_session_id,
+                    user_id=int(user_id),
+                    base_url=api_base_url,
+                )
+                st.session_state.chat_session_id = selected_session_id
+                st.session_state.chat_history = history
+                st.success("Loaded session history.")
+                st.rerun()
+            except error.HTTPError as http_err:
+                st.error(f"Backend error {http_err.code}: {http_err.reason}")
+            except error.URLError:
+                st.error(
+                    "Could not reach FastAPI backend. Start it with: "
+                    "uv run uvicorn backend.app.api:app --reload"
+                )
+
+    if not st.session_state.chat_session_id:
+        try:
+            response = create_session(user_id=int(user_id), base_url=api_base_url)
+            st.session_state.chat_session_id = response.get("session_id", "")
+            st.session_state.available_sessions = get_sessions(
+                user_id=int(user_id),
+                base_url=api_base_url,
+            )
+        except Exception:
+            st.session_state.chat_session_id = str(uuid4())
+
     st.caption(f"Session ID: {st.session_state.chat_session_id}")
 
     st.subheader("Persistent User Preferences")
     if st.button("Load User Preferences"):
         try:
             api_response = get_preferences(user_id=int(user_id), base_url=api_base_url)
-            st.session_state.pref_dietary_restrictions = api_response.get("dietary_restrictions", [])
+            st.session_state.pref_dietary_restrictions = api_response.get(
+                "dietary_restrictions", []
+            )
             st.session_state.pref_disliked_ingredients_text = ", ".join(
                 api_response.get("disliked_ingredients", [])
             )
-            st.session_state.pref_preference_summary = api_response.get("preference_summary", "")
+            st.session_state.pref_preference_summary = api_response.get(
+                "preference_summary", ""
+            )
             st.success(f"Loaded preferences for user {api_response.get('user_id')}.")
             st.rerun()
         except error.HTTPError as http_err:
@@ -181,10 +311,16 @@ with st.sidebar:
                 session_id=st.session_state.chat_session_id,
                 base_url=api_base_url,
             )
-            st.session_state.session_total_time = int(api_response.get("total_time", 45))
+            st.session_state.session_total_time = int(
+                api_response.get("total_time", 45)
+            )
             st.session_state.session_diet_types = api_response.get("diet_types", [])
-            st.session_state.session_calories_min = int(api_response.get("calories_min", 200))
-            st.session_state.session_calories_max = int(api_response.get("calories_max", 400))
+            st.session_state.session_calories_min = int(
+                api_response.get("calories_min", 200)
+            )
+            st.session_state.session_calories_max = int(
+                api_response.get("calories_max", 400)
+            )
             st.success("Loaded session filters.")
             st.rerun()
         except error.HTTPError as http_err:
@@ -203,7 +339,9 @@ with st.sidebar:
         key="session_total_time",
     )
 
-    diet_types = st.multiselect("Diet Types", options=diet_options, key="session_diet_types")
+    diet_types = st.multiselect(
+        "Diet Types", options=diet_options, key="session_diet_types"
+    )
     calories_min = st.number_input(
         "Minimum Calorie Count (per serving)",
         min_value=50,
@@ -224,10 +362,12 @@ with st.sidebar:
             "total_time": int(user_time),
             "diet_types": diet_types,
             "calories_min": calories_min,
-            "calories_max": calories_max
+            "calories_max": calories_max,
         }
         try:
-            api_response = post_session_preferences(payload=payload, base_url=api_base_url)
+            api_response = post_session_preferences(
+                payload=payload, base_url=api_base_url
+            )
             st.success("Session filters saved.")
             st.caption(
                 f"Saved: total_time={api_response.get('total_time')} | "
@@ -238,21 +378,31 @@ with st.sidebar:
         except error.HTTPError as http_err:
             err_msg = f"Backend error {http_err.code}: {http_err.reason}"
             st.error(err_msg)
-            st.session_state.chat_history.append({"role": "assistant", "content": err_msg})
+            st.session_state.chat_history.append(
+                {"role": "assistant", "content": err_msg}
+            )
         except error.URLError:
             err_msg = (
                 "Could not reach FastAPI backend. Start it with: "
                 "uv run uvicorn backend.app.api:app --reload"
             )
             st.error(err_msg)
-            st.session_state.chat_history.append({"role": "assistant", "content": err_msg})
+            st.session_state.chat_history.append(
+                {"role": "assistant", "content": err_msg}
+            )
     st.subheader("Ingest New Recipes into DB")
 
     cuisine_pref = st.multiselect("Cuisines", options=cuisine_options, default=[])
     meal_types = st.multiselect("Meal Types", options=meal_type_options, default=[])
-    ingest_diet_types = st.multiselect("Diet Types (Ingest)", options=diet_options, default=[])
-    intolerances = st.multiselect("Intolerances/Allergies", options=intolerances_options, default=[])
-    num_recipes = st.number_input("Number of New Recipes to Add", min_value=1, max_value=100, value=25)
+    ingest_diet_types = st.multiselect(
+        "Diet Types (Ingest)", options=diet_options, default=[]
+    )
+    intolerances = st.multiselect(
+        "Intolerances/Allergies", options=intolerances_options, default=[]
+    )
+    num_recipes = st.number_input(
+        "Number of New Recipes to Add", min_value=1, max_value=100, value=25
+    )
     if st.button("Refresh Recipes Based on Filters"):
         ingest_payload = {
             "user_id": int(user_id),
@@ -333,11 +483,15 @@ if prompt := st.chat_input("What would you like to cook?"):
         except error.HTTPError as http_err:
             err_msg = f"Backend error {http_err.code}: {http_err.reason}"
             st.error(err_msg)
-            st.session_state.chat_history.append({"role": "assistant", "content": err_msg})
+            st.session_state.chat_history.append(
+                {"role": "assistant", "content": err_msg}
+            )
         except error.URLError:
             err_msg = (
                 "Could not reach FastAPI backend. Start it with: "
                 "uv run uvicorn backend.app.api:app --reload"
             )
             st.error(err_msg)
-            st.session_state.chat_history.append({"role": "assistant", "content": err_msg})
+            st.session_state.chat_history.append(
+                {"role": "assistant", "content": err_msg}
+            )

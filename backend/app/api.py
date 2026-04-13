@@ -1,12 +1,16 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, model_validator
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 from .session_chat_handler import SessionChatHandler
 from .ingester import Ingester
 from .user_memory_store import UserMemoryStore
+from .db import init_db
+from .db.migrate_user_memory import migrate_user_memory_json
 from data.spoonacular_data_options import (
     cuisine_options,
     meal_type_options,
@@ -15,8 +19,16 @@ from data.spoonacular_data_options import (
 )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # startup the DB
+    init_db()
+    migrate_user_memory_json()
+    yield
+
+
 # ----- Init App ----
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 # Allow Streamlit frontend calls
 app.add_middleware(
@@ -28,6 +40,7 @@ app.add_middleware(
 )
 
 load_dotenv()
+
 
 # ----- Pydantic Schemas -----
 class ChatRequest(BaseModel):
@@ -75,6 +88,7 @@ class SessionPreferences(BaseModel):
             raise ValueError("calories_min must be less than or equal to calories_max")
         return self
 
+
 class IngestFilters(BaseModel):
     user_id: int
     session_id: str
@@ -111,6 +125,27 @@ class IngestResponse(BaseModel):
     invalid_samples: List[Dict[str, Any]] = Field(default_factory=list)
 
 
+class SessionInfo(BaseModel):
+    session_id: str
+    created_at: str
+    last_active_at: str
+    summary: str = ""
+    title: str = ""
+
+
+class SessionMessage(BaseModel):
+    role: str
+    content: str
+
+
+class CreateSessionRequest(BaseModel):
+    user_id: int
+
+
+class CreateSessionResponse(BaseModel):
+    session_id: str
+
+
 # define session memory + lightweight user memory store
 session_preferences_store: Dict[str, SessionPreferences] = {}
 user_memory_store = UserMemoryStore()
@@ -122,7 +157,6 @@ ingester = Ingester()
 @app.get("/", tags=["root"])
 async def root() -> dict:
     return {"message": "Hello from FastAPI!!"}
-
 
 
 @app.post("/chat", tags=["Chat"])
@@ -166,9 +200,13 @@ async def chat(chat_input: ChatRequest) -> ChatResponse:
         )
 
         # chat
-        response = chat_handler.chat(session_id, user_message, effective_context.model_dump())
+        response = chat_handler.chat(
+            session_id, user_message, effective_context.model_dump()
+        )
 
-        return ChatResponse(model_response=response["response"], chunks=response["chunks"])
+        return ChatResponse(
+            model_response=response["response"], chunks=response["chunks"]
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -270,6 +308,34 @@ async def store_session_preferences(session_prefs: SessionPreferences):
     return session_prefs
 
 
+@app.get("/sessions", tags=["Sessions"], response_model=List[SessionInfo])
+async def list_sessions(user_id: int):
+    user_memory_store.get_or_create_user(user_id)
+    sessions = user_memory_store.get_sessions(user_id)
+    return [SessionInfo(**session) for session in sessions]
 
 
+@app.post("/sessions", tags=["Sessions"], response_model=CreateSessionResponse)
+async def create_session(payload: CreateSessionRequest):
+    user_memory_store.get_or_create_user(payload.user_id)
+    session_id = user_memory_store.start_session(payload.user_id)
+    return CreateSessionResponse(session_id=session_id)
 
+
+@app.get(
+    "/sessions/{session_id}/messages",
+    tags=["Sessions"],
+    response_model=List[SessionMessage],
+)
+async def get_session_messages(session_id: str, user_id: int):
+    owner_id = user_memory_store.get_user_for_session(session_id)
+    if owner_id is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if owner_id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Session does not belong to this user.",
+        )
+
+    history = chat_handler.get_history(session_id)
+    return [SessionMessage(**msg) for msg in history]
