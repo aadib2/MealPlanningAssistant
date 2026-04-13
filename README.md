@@ -14,13 +14,13 @@ This system leverages RAG (Retrieval-Augmented Generation) and agentic workflows
 - **Structured Recommendation Pipeline**: 
   1. Retrieves top 5 candidate recipes via semantic search
   2. Reasons about best options given user context
-  3. Fetches additional metadata (nutrition info, cooking steps, ingredient substitutions) via API endpoints
+  3. Fetches additional metadata (nutrition info, cooking steps, ingredient substitutions) via Spoonacular API
   4. Generates comprehensive, personalized response
 
 ### Planned Workflows
-- **Tool Integration**: Notion for meal logging, Google Calendar for scheduling
+- **Tool Integration**: Spoonacular MCP for recipe detail breakdown (nutrition, ingredients, etc) and web search fallback.
 - **Preference Learning**: Continuous personalization from user feedback
-- **Shopping List Generation**: Automated grocery lists based on meal plans
+- **Shopping List Generation & Recipe Saving**: Option to save / like recipes to memory and generate automated grocery lists based on meal plans
 
 ## Project Practicality
 
@@ -35,9 +35,9 @@ This system leverages RAG (Retrieval-Augmented Generation) and agentic workflows
 ## Tech Stack
 
 - **LLM**: Claude (Anthropic)
-- **Vector Database**: Chroma
+- **Vector Database**: Pinecone
 - **Framework**: LangChain
-- **Backend**: Python (migrating to FastAPI)
+- **Backend**: FastAPI
 - **Frontend**: Streamlit (migrating to React/TypeScript)
 
 ## System Architecture (Current)
