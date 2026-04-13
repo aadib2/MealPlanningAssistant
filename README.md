@@ -6,6 +6,12 @@ An AI-powered meal planning assistant that suggests personalized recipes based o
 
 This system leverages RAG (Retrieval-Augmented Generation) and agentic workflows to provide context-aware recipe recommendations. The assistant reasons across multiple data sources—user preferences, past meal history, and a recipe database—to deliver personalized meal suggestions that fit your lifestyle.
 
+## Project Demo (Current)
+
+A rough demo of the current functionality of the app via the Streamlit frontend.
+
+<img src='backend/app/Demo1.gif' title='Video Walkthrough' width='' alt='Video Walkthrough' />
+
 ## Project Outcomes
 
 ### Implemented Workflows
